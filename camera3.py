@@ -1,60 +1,49 @@
-import cv2
+import subprocess
+import time
+import os
+from picamera2 import Picamera2
+from libcamera import controls
 
-# 设置gstreamer管道参数
-def gstreamer_pipeline(
-    capture_width=1280, #摄像头预捕获的图像宽度
-    capture_height=720, #摄像头预捕获的图像高度
-    display_width=1280, #窗口显示的图像宽度
-    display_height=720, #窗口显示的图像高度
-    framerate=60,       #捕获帧率
-    flip_method=0,      #是否旋转图像
-):
-    return (
-        "nvarguscamerasrc ! "
-        "video/x-raw(memory:NVMM), "
-        "width=(int)%d, height=(int)%d, "
-        "format=(string)NV12, framerate=(fraction)%d/1 ! "
-        "nvvidconv flip-method=%d ! "
-        "video/x-raw, width=(int)%d, height=(int)%d, format=(string)BGRx ! "
-        "videoconvert ! "
-        "video/x-raw, format=(string)BGR ! appsink"
-        % (
-            capture_width,
-            capture_height,
-            framerate,
-            flip_method,
-            display_width,
-            display_height,
-        )
+def test_imx708():
+    # 初始化 Picamera2 (专为 libcamera 设计)
+    picam2 = Picamera2()
+    
+    # 配置摄像头参数 (IMX708 推荐设置)
+    config = picam2.create_still_configuration(
+        main={"size": (1920, 1080)},  # IMX708 支持的分辨率
+        raw={"size": picam2.sensor_resolution},
+        controls={
+            "AwbMode": controls.AwbModeEnum.Auto,  # 自动白平衡
+            "ExposureTime": 10000,  # 曝光时间 (微秒)
+            "AnalogueGain": 1.0,    # 模拟增益
+        }
     )
- 
+    picam2.configure(config)
+    
+    # 启动摄像头
+    picam2.start()
+    print("IMX708 摄像头已启动 (按 Ctrl+C 退出)")
+
+    try:
+        while True:
+            # 拍照测试
+            filename = f"imx708_photo_{time.strftime('%Y%m%d_%H%M%S')}.jpg"
+            picam2.capture_file(filename)
+            print(f"拍照成功: {filename}")
+            
+            # 等待 3 秒后继续
+            time.sleep(3)
+            
+    except KeyboardInterrupt:
+        print("\n用户终止测试")
+    finally:
+        picam2.stop()
+        print("摄像头已释放")
+
 if __name__ == "__main__":
-    capture_width = 1280
-    capture_height = 720
-    display_width = 1280
-    display_height = 720
-    framerate = 60
-    flip_method = 0
- 
-    # 创建管道
-    print(gstreamer_pipeline(capture_width,capture_height,display_width,display_height,framerate,flip_method))
- 
-    #管道与视频流绑定
-    cap = cv2.VideoCapture(gstreamer_pipeline(flip_method=0), cv2.CAP_GSTREAMER)
- 
-    if cap.isOpened():
-        window_handle = cv2.namedWindow("CSI Camera", cv2.WINDOW_AUTOSIZE)
-        
-        # 逐帧显示
-        while cv2.getWindowProperty("CSI Camera", 0) >= 0:
-            ret_val, img = cap.read()
-            cv2.imshow("CSI Camera", img)
- 
-            keyCode = cv2.waitKey(30) & 0xFF         
-            if keyCode == 27:# ESC键退出
-                break
- 
-        cap.release()
-        cv2.destroyAllWindows()
-    else:
-        print("打开摄像头失败")
+    # 检查是否安装必要库
+    try:
+        test_imx708()
+    except ImportError:
+        print("错误：缺少依赖库，请先执行以下命令安装：")
+        print("sudo apt install -y python3-picamera2 python3-libcamera")
